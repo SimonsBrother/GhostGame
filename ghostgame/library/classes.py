@@ -1,4 +1,5 @@
 from time import time
+from ghostgame.library.constants import GhostState
 
 
 class Ghost:
@@ -10,20 +11,23 @@ class Ghost:
         current_dim (int): The dimension the ghost is currently at, initially 0.
         max_health (float): The maximum and initial amount of health a ghost has.
         health (float): The current amount of health a ghost has.
-        move_delay (float): The time in seconds between each movement.
-        panic_delay (float) The time in seconds between each movement when panicking.
-        move_delay_base (float): The time to compare with, to determine when to move the ghost.
-        animation_progress (dict): A dictionary for use by methods to keep track of progress of animations
+        passive_move_delay (float): The time in seconds between each movement.
+        panicked_move_delay (float) The time in seconds between each movement when panicking.
+        time_last_moved (float): The time (since epoch) the ghost last moved at, used to determine when to move the ghost.
         appearance: A 2D array [y][x] that stores tuples of 3 values (RGB) to represent the appearance of the ghost on
             the LED matrix.
+        centre (tuple): The pixel within the appearance attribute that should be treated as the centre
+        state (GhostState): The current state of the ghost, if it is panicking or passive.
+        panic_progress (float): When this value equals the panic_threshold, the ghost panics.
+        time_last_panic_increased (float): Keeps track of the time (since epoch) that the ghost appeared on screen
     """
 
-    def __init__(self, max_health: float, move_delay: float, panic_delay: float):
+    def __init__(self, max_health: float, passive_move_delay: float, panicked_move_delay: float):
         """
         Args:
             max_health (float): The initial health that the ghost should have.
-            move_delay (float): The time in seconds between each movement.
-            panic_delay (float) The time in seconds between each movement when panicking.
+            passive_move_delay (float): The time in seconds between each movement.
+            panicked_move_delay (float) The time in seconds between each movement when panicking.
         """
 
         self.angle = (0, 0)
@@ -32,12 +36,24 @@ class Ghost:
         self.max_health = max_health
         self.health = max_health
 
-        self.move_delay = move_delay
-        self.panic_delay = panic_delay
-        self.move_delay_base = time()
+        self.passive_move_delay = passive_move_delay
+        self.panicked_move_delay = panicked_move_delay
+        self.time_last_moved = time()
 
-        self.animation_progress = dict
         self.appearance = [[(255, 255, 255)]]
+        self.centre = (0, 0)
+
+        self.state = GhostState.PASSIVE
+        self.panic_progress = 0
+        self.time_last_panic_increased = time()
+        self.panic_threshold = 1
+
+    def getTimeSinceMoved(self) -> float:
+        """
+        Returns:
+            float: The time between now and when the ghost last moved
+        """
+        return time() - self.time_last_moved
 
     def damaged(self, damage):
         """ Determines the behaviour of the ghost when it takes damage, and decreases current health.
@@ -45,12 +61,42 @@ class Ghost:
         Args:
             damage: How much damage is inflicted.
         """
-        ...
+        self.health -= damage
+        # Make the ghost panic; note that the ghost will be on screen in order for damage to be applied
+        self.panic_progress = self.panic_threshold
 
-    def move(self):
-        """ The behaviour of the ghost when not panicking (i.e., off screen). """
-        ...
+    def move_passively(self):
+        """ Performs a single movement when not panicking (i.e., off screen). """
+        ...  # todo
 
-    def panic(self):
-        """ The behaviour of the ghost when panicking (i.e., on screen and attacked). """
+    def move_panicked(self):
+        """ Performs a single movement when panicking (i.e., on screen or attacked). """
+        ...  # todo
+
+    def ghostVisible(self, hat_angle, fov):
+        ...  # todo
+
+    def updateGhost(self, hat_angle):
+        """ Makes the ghost move depending on the arguments passed, and time since the ghost last moved """
         ...
+        # If the ghost is on the matrix, increment the panic_progress attribute; otherwise, reset panic
+        # if ghost on matrix
+        #    self.panic_progress += time() - self.time_last_panic_increased
+        #    self.time_last_panic_increased = time()
+        # else:
+        #    self.panic_progress = 0
+        # todo
+
+        # Check if ghost should panic
+        if self.panic_progress >= self.panic_threshold:
+            self.state = GhostState.PANICKED
+        else:
+            self.state = GhostState.PASSIVE
+
+        # Perform correct movement
+        if self.state == GhostState.PASSIVE and self.getTimeSinceMoved() > self.passive_move_delay:
+            self.move_passively()
+            self.time_last_moved = time()
+        elif self.state == GhostState.PANICKED and self.getTimeSinceMoved() > self.panicked_move_delay:
+            self.move_panicked()
+            self.time_last_moved = time()
