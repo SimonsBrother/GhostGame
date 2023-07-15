@@ -1,5 +1,16 @@
+import warnings
 from time import time
-from ghostgame.library.constants import GhostState
+from random import randint
+
+from .constants import GhostState, NUM_DIMS
+
+
+class NotImplementedWarning(Warning):
+    pass
+
+
+def warnNYI(msg=""):
+    warnings.warn(msg, NotImplementedWarning)
 
 
 class Ghost:
@@ -17,9 +28,9 @@ class Ghost:
         appearance: A 2D array [y][x] that stores tuples of 3 values (RGB) to represent the appearance of the ghost on
             the LED matrix.
         centre (tuple): The pixel within the appearance attribute that should be treated as the centre
-        state (GhostState): The current state of the ghost, if it is panicking or passive.
         panic_progress (float): When this value equals the panic_threshold, the ghost panics.
-        time_last_panic_increased (float): Keeps track of the time (since epoch) that the ghost appeared on screen
+        panic_threshold (float): How long the ghost should be on the screen before panicking.
+        time_last_panic_increased (float): Keeps track of the time (since epoch) that the panic last increased.
     """
 
     def __init__(self, max_health: float, passive_move_delay: float, panicked_move_delay: float):
@@ -30,23 +41,27 @@ class Ghost:
             panicked_move_delay (float) The time in seconds between each movement when panicking.
         """
 
-        self.angle = (0, 0)
-        self.current_dim = 0
+        # Generate random location and dimension
+        self.angle = (randint(0, 360), randint(0, 360))
+        self.current_dim = randint(1, NUM_DIMS)
 
+        # Initialise health
         self.max_health = max_health
         self.health = max_health
 
+        # Initialise move delay
         self.passive_move_delay = passive_move_delay
         self.panicked_move_delay = panicked_move_delay
         self.time_last_moved = time()
 
+        # Initialise appearance
         self.appearance = [[(255, 255, 255)]]
         self.centre = (0, 0)
 
-        self.state = GhostState.PASSIVE
+        # Initialise panic
         self.panic_progress = 0
-        self.time_last_panic_increased = time()
         self.panic_threshold = 1
+        self.time_last_panic_increased = time()
 
     def getTimeSinceMoved(self) -> float:
         """
@@ -65,19 +80,27 @@ class Ghost:
         # Make the ghost panic; note that the ghost will be on screen in order for damage to be applied
         self.panic_progress = self.panic_threshold
 
-    def move_passively(self):
+    def changeAngle(self, x, y):
+        """ Moves the ghost by x and y.
+
+        Args:
+            x: How much to change the horizontal angle by.
+            y: How much to change the vertical angle by.
+        """
+        self.angle[0] += x
+        self.angle[1] += y
+
+    def movePassively(self):
         """ Performs a single movement when not panicking (i.e., off screen). """
-        ...  # todo
+        self.changeAngle(0, randint(-2, 2))
+        warnNYI("movePassively")  # todo
 
-    def move_panicked(self):
+    def movePanicked(self):
         """ Performs a single movement when panicking (i.e., on screen or attacked). """
-        ...  # todo
+        self.changeAngle(5, 0)
+        warnNYI("movePanicked")  # todo
 
-    def ghostVisible(self, hat_angle, fov):
-        ...  # todo
-
-    def updateGhost(self, hat_angle):
-        """ Makes the ghost move depending on the arguments passed, and time since the ghost last moved """
+    def updatePanic(self):
         ...
         # If the ghost is on the matrix, increment the panic_progress attribute; otherwise, reset panic
         # if ghost on matrix
@@ -85,18 +108,17 @@ class Ghost:
         #    self.time_last_panic_increased = time()
         # else:
         #    self.panic_progress = 0
-        # todo
 
-        # Check if ghost should panic
-        if self.panic_progress >= self.panic_threshold:
-            self.state = GhostState.PANICKED
-        else:
-            self.state = GhostState.PASSIVE
+    def updateGhost(self, sense):
+        """ Makes the ghost move depending on the arguments passed, and time since the ghost last moved """
+        ...
 
-        # Perform correct movement
-        if self.state == GhostState.PASSIVE and self.getTimeSinceMoved() > self.passive_move_delay:
-            self.move_passively()
+        # Perform movement; check panic progress to determine which function to run, then check if time to move
+        # Passive movement
+        if self.panic_progress < self.panic_threshold and self.getTimeSinceMoved() > self.passive_move_delay:
+            self.movePassively()
             self.time_last_moved = time()
-        elif self.state == GhostState.PANICKED and self.getTimeSinceMoved() > self.panicked_move_delay:
-            self.move_panicked()
+        # Panicked movement
+        elif self.panic_progress >= self.panic_threshold and self.getTimeSinceMoved() > self.panicked_move_delay:
+            self.movePanicked()
             self.time_last_moved = time()
