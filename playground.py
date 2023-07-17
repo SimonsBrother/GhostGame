@@ -1,19 +1,21 @@
-red = (255, 0, 0)
-green = (0, 255, 0)
-blue = (0, 0, 255)
-white = (255, 255, 255)
-ap = [[red, green, red],
-      [blue, white, green],
-      [red, blue, red]]
-ap.reverse()
-centre = (1, 1)
+from ghostgame.library.sensehat import calcXAngularDisp, calcYAngularDisp
 
-x = 3
-y = 3
+from sense_hat import SenseHat
 
-for i, row in enumerate(ap):
-    for j, pxl in enumerate(row):
-        x_r = x + (i - centre[0])
-        y_r = y + (j - centre[1])
-        if 0 <= x_r <= 7 and 0 <= y_r <= 7:
-            print(x_r, y_r, pxl)
+sense = SenseHat()
+sense.set_imu_config(False, True, False)
+
+target = (0, 90)
+
+while True:
+    orient_deg = sense.get_orientation_degrees()
+
+    x = orient_deg['yaw']
+    y = orient_deg['roll']
+    z = orient_deg['pitch']
+
+    x_diff = calcXAngularDisp(target[0], x)
+    y_diff = calcYAngularDisp(target[1], y)
+
+    #print("raw:", round(x - z), round(y - z))
+    print("diff:", round(x_diff), round(y_diff), "raw:", round(x), round(y), round(z))

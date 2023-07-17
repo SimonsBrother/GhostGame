@@ -1,28 +1,53 @@
-import math
-
-
 from .constants import RANGE
 
 
-def calcAngularDisp(p, s):
-    """ Calculates the angular displacement between two values on a single axis
+def calcXAngularDisp(ghost_angle: float, sense_angle: float):
+    """ Calculates the angular displacement between two values on a horizontal axis
 
     Args:
-        p: Angle of a certain point (0 to 360 degrees)
-        s: Angle of another point (0 to 360 degrees)
+        ghost_angle: Horizontal angle of ghost from facing forwards (0 to 360 degrees)
+        sense_angle: Horizontal angle of Sense HAT from facing forwards (0 to 360 degrees)
 
-    Returns: The displacement between the two angles; negative values indicate down or left,
-    positive indicate up or right.
-
+    Returns: The displacement between the two angles; negative values indicate ghost is left relative to Pi orientation,
+    positive indicate ghost is right relative to Pi. A float value between -180 and 180 inclusive.
     """
-    difference = abs(s - p)
-    # I don't really know why this direction bit works; I messed about with it, and it seems to.
-    direction = -1 if (p - s) > 0 else 1
 
-    if difference < 180:
-        return difference * direction
+    difference = ghost_angle - sense_angle
+
+    # If out of range, normalise to be within -180 and 180
+    if abs(difference) > 180:
+        # If difference is negative
+        if difference < 0:
+            difference = 360 + difference
+        # Else difference is positive
+        else:
+            difference = 360 - difference
+
+    return difference
+
+
+def calcYAngularDisp(ghost_angle: float, sense_angle: float):
+    """ Calculates the angular displacement between two values on a vertical axis
+
+    Args:
+        ghost_angle: Vertical angle of ghost from facing downwards (0 to 180 degrees)
+        sense_angle: Vertical angle of Sense HAT from facing downwards (0 to 360 degrees; will be limited)
+
+    Returns: The displacement between the two angles; negative values indicate ghost is down relative to Pi orientation,
+    positive indicate ghost is up relative to Pi. A float value between -180 and 180 inclusive.
+    """
+    # Limit out of range values
+    if 180 < sense_angle <= 270:
+        limited_sense_angle = 180
+    elif 270 < sense_angle <= 360:
+        limited_sense_angle = 0
+    # Sense HAT vertically oriented between 0 and 180 inclusive
     else:
-        return (360 - difference) * -direction
+        limited_sense_angle = sense_angle
+
+    difference = ghost_angle - limited_sense_angle
+
+    return difference
 
 
 def calcDist(x: float, y: float):
@@ -35,29 +60,18 @@ def calcDist(x: float, y: float):
     Returns: The magnitude of displacement
     """
 
-    return pow(x ** 2 + y ** 2, 0.5)
+    return ((x ** 2) + (y ** 2)) ** 0.5
 
 
-def calcPxlPos(sense, target_angle: tuple):
+def calcPxlPos(angle_diffs):
     """ Determines the position on the sense HAT matrix the centre of the ghost should appear; does not limit to
     sense HAT matrix dimensions.
 
     Args:
-        sense: A SenseHAT object.
-        target_angle (tuple): The angles to compare the sense HAT orientation with, in
-            format (horizontal angle, vertical angle).
+        angle_diffs: List containing the [horizontal angular difference between target and point, same for vertical].
 
     Returns: a tuple containing (horizontal coordinate, vertical coordinate); may take values beyond sense HAT matrix
-
     """
-    orient = sense.get_orientation_degrees()
-    x = orient['yaw']
-    y = orient['roll']
-
-    x_diff = calcAngularDisp(target_angle[0], x)
-    y_diff = calcAngularDisp(target_angle[1], y)
-
-    print(f"x: {round(x_diff)}, y: {round(y_diff)}")
 
     # Calculate pixel positions: each axis position is linearly related to the angle difference on that axis.
     """ Derivation
@@ -74,10 +88,9 @@ def calcPxlPos(sense, target_angle: tuple):
     
     Y = 4x/L + 3
     """
-    # X value has to be inverted for some reason
-    pxl_x = round(4 * -x_diff/RANGE + 3)
-    pxl_y = round(4 * y_diff/RANGE + 3)
-    # print(pxl_x, pxl_y)
+    # Y value has to be inverted for some reason
+    pxl_x = round(4 * angle_diffs[0]/RANGE + 3)
+    pxl_y = round(4 * -angle_diffs[1]/RANGE + 3)
 
     return pxl_x, pxl_y
 

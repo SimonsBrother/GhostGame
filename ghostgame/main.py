@@ -1,6 +1,5 @@
-from random import randint
-
-from library.sensehat import calcPxlPos, calcImageData
+from library.sensehat import calcPxlPos, calcImageData, calcDist, calcXAngularDisp, calcYAngularDisp
+from library.classes import Ghost, ShutdownChecker
 
 from sense_hat import SenseHat
 
@@ -8,27 +7,41 @@ from sense_hat import SenseHat
 sense = SenseHat()
 sense.clear()
 
-target = (150, 90)
-# target = (randint(0, 360), randint(0, 360))
+ghost = Ghost(10, 1, 0.5)
 
-# ap = [[(255, 255, 255)]]
-blank = (0, 0, 0)
-red = (255, 0, 0)
-green = (0, 255, 0)
-blue = (0, 0, 255)
-white = (255, 255, 255)
-ap = [[red, green, red],
-      [blank, white, green],
-      [red, blue, red]]
+# Shutdown checker
+shutdown_checker = ShutdownChecker(debug=True)
 
-centre = (1, 1)
-
+# Main loop
 while True:
-    orient = sense.get_orientation_degrees()
+    orient_deg = sense.get_orientation_degrees()
 
-    pxl_pos = calcPxlPos(sense, target)
-    image_data = calcImageData(pxl_pos, ap, centre)
+    x = orient_deg['yaw']
+    y = orient_deg['roll']
+
+    x_diff = calcXAngularDisp(ghost.angle[0], x)
+    y_diff = calcYAngularDisp(ghost.angle[1], y)
+    print("diff:", round(x_diff), round(y_diff))
+
+    angle_diffs = [x_diff, y_diff]
+
+    pxl_pos = calcPxlPos(angle_diffs)
+    ghost.updateGhost(pxl_pos)
+    image_data = calcImageData(pxl_pos, ghost.appearance, ghost.centre)
+
+    # Sensor bar
+    distance = calcDist(x_diff, y_diff)
+    print("Distance:", distance)
+    dist_pxl = round((7 / 254.5) * distance)
 
     sense.clear()
+
+    # Sensor bar
+    if 0 <= dist_pxl <= 7:
+        for i in range(dist_pxl):
+            sense.set_pixel(0, i, 0, 100, 0)
+
     for pixel_data in image_data:
         sense.set_pixel(*pixel_data)
+
+    shutdown_checker.update(sense.stick.get_events())
