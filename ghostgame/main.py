@@ -1,47 +1,36 @@
-from library.sensehat import calcPxlPos, calcImageData, calcDist, calcXAngularDisp, calcYAngularDisp
-from library.classes import Ghost, ShutdownChecker
+from library.classes import Ghost, ShutdownChecker, ProximityBar
 
 from sense_hat import SenseHat
 
 
 sense = SenseHat()
+sense.set_imu_config(False, True, False)
 sense.clear()
 
-ghost = Ghost(10, 1, 0.5)
+ghost = Ghost(sense)
 
 # Shutdown checker
-shutdown_checker = ShutdownChecker(debug=True)
+shutdown_checker = ShutdownChecker("right", debug=True)
+
+proximity_bar = ProximityBar()
 
 # Main loop
 while True:
-    orient_deg = sense.get_orientation_degrees()
+    # Get inputs
 
-    x = orient_deg['yaw']
-    y = orient_deg['roll']
+    # Update ghosts
+    ghost.updateGhost()
 
-    x_diff = calcXAngularDisp(ghost.angle[0], x)
-    y_diff = calcYAngularDisp(ghost.angle[1], y)
-    print("diff:", round(x_diff), round(y_diff))
+    proximity_bar.update([ghost])
+    image_data = ghost.calcImageData()
 
-    angle_diffs = [x_diff, y_diff]
-
-    pxl_pos = calcPxlPos(angle_diffs)
-    ghost.updateGhost(pxl_pos)
-    image_data = calcImageData(pxl_pos, ghost.appearance, ghost.centre)
-
-    # Sensor bar
-    distance = calcDist(x_diff, y_diff)
-    print("Distance:", distance)
-    dist_pxl = round((7 / 254.5) * distance)
-
+    # Update matrix
     sense.clear()
 
-    # Sensor bar
-    if 0 <= dist_pxl <= 7:
-        for i in range(dist_pxl):
-            sense.set_pixel(0, i, 0, 100, 0)
+    proximity_bar.render(sense)
 
     for pixel_data in image_data:
         sense.set_pixel(*pixel_data)
 
+    # Shutdown check
     shutdown_checker.update(sense.stick.get_events())
