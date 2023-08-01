@@ -14,6 +14,33 @@ class RGB(Enum):
     PINK = [252, 3, 232]
 
 
+class StickDir(Enum):
+    UP = "up"
+    DOWN = "down"
+    LEFT = "left"
+    RIGHT = "right"
+    MIDDLE = "middle"
+
+
+class StickAct(Enum):
+    PRESSED = "pressed"
+    RELEASED = "released"
+    HELD = "held"
+
+
+class GameState(Enum):
+    MENU = "menu"
+    INFO = "info"
+    PAUSED = "paused"
+    PLAY = "play"
+
+
+class HUDState(Enum):
+    OFF = "off"
+    DIM = "dim"
+    BRIGHT = "bright"
+
+
 # The number of explorable dimensions to have in the game
 NUM_DIMS = 3
 

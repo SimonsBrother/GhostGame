@@ -1,36 +1,46 @@
-from library.classes import Ghost, ShutdownChecker, ProximityBar
+import os
 
-from sense_hat import SenseHat
+from library.classes import Ghost, GameManager
+from library.constants import GameState
 
+gm = GameManager()
+# Initialise ghosts
+ghosts = [Ghost()]
 
-sense = SenseHat()
-sense.set_imu_config(False, True, False)
-sense.clear()
-
-ghost = Ghost(sense)
-
-# Shutdown checker
-shutdown_checker = ShutdownChecker("right", debug=True)
-
-proximity_bar = ProximityBar()
-
-# Main loop
+# Game loop
 while True:
-    # Get inputs
+    gm.attack_system.attempting_attack = False
 
-    # Update ghosts
-    ghost.updateGhost()
+    # Get inputs from joystick
+    new_events = gm.getNewJoystickEvents()
+    gm.interpretNewEvents(new_events)
 
-    proximity_bar.update([ghost])
-    image_data = ghost.calcImageData()
+    # Continue playing game
+    if gm.game_state == GameState.PLAY:
+        # Make list of blank RGB values for rendering ghost images
+        matrix = [(0, 0, 0) * 64]
+        # Update ghosts
+        sense_orientation = gm.sense_ref.orientation_degrees
+        for ghost in ghosts:
+            ghost.updateGhost(sense_orientation)
 
-    # Update matrix
-    sense.clear()
+        # Update proximity bar
+        gm.proximity_bar.update(ghosts)
 
-    proximity_bar.render(sense)
+        # Update LED matrix
+        # Note that the ghost is not shown in this version
+        gm.sense_ref.sense_hat.clear()
+        gm.attack_system.renderHud(gm.sense_ref.sense_hat)  # Render attack system HUD first because it overwrites entire display
+        gm.proximity_bar.render(gm.sense_ref.sense_hat)  # Proximity bar
 
-    for pixel_data in image_data:
-        sense.set_pixel(*pixel_data)
+    # Paused
+    elif gm.game_state == GameState.PAUSED:
+        print("Paused")
 
-    # Shutdown check
-    shutdown_checker.update(sense.stick.get_events())
+    # Info
+    elif gm.game_state == GameState.INFO:
+        print("Info")
+
+    # Shut down Pi if shutdown sequence input
+    if gm.shutdown_checker.update(new_events):
+        os.system("sudo shutdown now")

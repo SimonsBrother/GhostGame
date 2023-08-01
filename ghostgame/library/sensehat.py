@@ -75,7 +75,7 @@ def calcPxlPos(x_disp: float, y_disp: float) -> list:
         y_disp (float): Vertical component of displacement.
 
     Returns:
-        list: a tuple containing (horizontal coordinate, vertical coordinate); may take values beyond sense HAT matrix
+        list: A list containing (horizontal coordinate, vertical coordinate); may take values beyond sense HAT matrix.
     """
 
     # Calculate pixel positions: each axis position is linearly related to the angle difference on that axis.
@@ -98,3 +98,36 @@ def calcPxlPos(x_disp: float, y_disp: float) -> list:
     pxl_y = round(4 * -y_disp / RANGE + 3)
 
     return [pxl_x, pxl_y]
+
+# TODO: Test
+def checkPxlDistFromEdge(pxl_pos: list, dist_from_edge: int) -> bool:
+    """ Determines if the pixel position provided is a certain distance from the edge of the sense HAT matrix.
+
+    Args:
+        pxl_pos: The coordinates on the matrix to check.
+        dist_from_edge: The distance from the edge of the sense HAT matrix.
+
+    Returns:
+        bool: Whether the ghost is at least the distance dist_from_edge from the edge of the sense HAT matrix.
+    """
+    return dist_from_edge <= pxl_pos[0] <= (7 - dist_from_edge) and dist_from_edge <= pxl_pos[1] <= (7 - dist_from_edge)
+
+# TODO: Test
+def getFocusEffect(bc: list, fc: list) -> list:
+    """ Builds a list of colors to apply to the sense HAT matrix, forming a square on it.
+
+    Args:
+        bc (list): The background color, in the form [R, G, B].
+        fc (list): The focus color, in the form [R, G, B].
+
+    Returns:
+        list: An array that can be passed to the sense HAT to apply the focus.
+    """
+    return [bc, bc, bc, bc, bc, bc, bc, bc,
+            bc, fc, fc, fc, fc, fc, fc, bc,
+            bc, fc, bc, bc, bc, bc, fc, bc,
+            bc, fc, bc, bc, bc, bc, fc, bc,
+            bc, fc, bc, bc, bc, bc, fc, bc,
+            bc, fc, bc, bc, bc, bc, fc, bc,
+            bc, fc, fc, fc, fc, fc, fc, bc,
+            bc, bc, bc, bc, bc, bc, bc, bc]
