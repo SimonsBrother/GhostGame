@@ -5,7 +5,7 @@ from math import floor
 from threading import Thread, Lock
 
 from .constants import NUM_DIMS, RGB, RANGE, StickDir, StickAct, HUDState, GameState
-from .sensehat import calcXAngularDisp, calcYAngularDisp, calcDist, calcPxlPos, getFocusEffect
+from .sensehat import calcXAngularDisp, calcYAngularDisp, calcDist, calcPxlPos
 
 from sense_hat import SenseHat, InputEvent
 
@@ -28,6 +28,7 @@ class SenseHatRef:
         thread (Thread): Stores the thread that continually updates the orientation; started in constructor.
         lock (Lock): Stores the lock that controls access to orientation_degrees.
     """
+
     def __init__(self, sense_hat: SenseHat):
         self.sense_hat = sense_hat
         self.orientation_degrees = self.sense_hat.get_orientation_degrees()
@@ -48,7 +49,22 @@ class SenseHatRef:
 
 # TODO: test; implement dimension indicator on matrix
 class GameManager:
+    """ Handles game state, attack system, proximity bar, dimension switching, joystick input interpretation, and,
+    stores reference to sense HAT that is currently in use.
+
+    Attributes:
+        sense_ref (SenseHatRef): Stores a reference to the SenseHat object in use. Anything to do with the sense HAT
+            should come through this attribute.
+        game_state (GameState): Takes a constant value that indicates the current state the game is in (e.g. paused).
+        current_dim (int): The current dimension the player is searching in.
+        dim_colors (tuple): Stores the colors that represent each dimension, as a tuple of RGB constants; used to
+            display the current dimension on the sense HAT matrix.
+        matrix_buffer (list): Stores a list of 64 lists of three values representing red, green, and blue respectively.
+            This is used to build up an image to be displayed on the LED matrix of the sense HAT.
+    """
+
     def __init__(self):
+        # Initialise sense HAT
         self.sense_ref = SenseHatRef(SenseHat())
         self.sense_ref.sense_hat.set_imu_config(False, True, False)
 
@@ -59,10 +75,16 @@ class GameManager:
         self.current_dim = 1
         self.dim_colors = (RGB.RED, RGB.GREEN, RGB.BLUE)
 
+        self.ghosts = []
+
+        # Initialise matrix buffer
+        self.matrix_buffer = []
+        self.clearMatrixBuffer()
+
         # Subsystems
         self.shutdown_checker = ShutdownChecker(StickDir.UP, debug=True)
-        self.proximity_bar = ProximityBar()
-        self.attack_system = AttackSystem()
+        self.proximity_bar = ProximityBar(self)
+        self.attack_system = AttackSystem(self)
 
     # TODO: test
     def resetSenseHAT(self):
@@ -133,6 +155,29 @@ class GameManager:
     def attemptAttack(self):
         self.attack_system.attempting_attack = True
 
+    # todo: test
+    def prepareToRender(self):
+        """ Calls the render functions of all subsystems to render to the matrix buffer. """
+        # Order matters; last called will overwrite previous renders.
+        self.clearMatrixBuffer()
+        self.proximity_bar.renderToBuffer()
+        self.attack_system.renderChargeBarToBuffer()
+        self.attack_system.renderFocusEffectToBuffer()
+        # TODO: optimise ghost rendering?
+        for ghost in self.ghosts:
+            for pixel in ghost.calcImageData():
+                self.
+
+            # todo: left off here; render ghost pixels
+
+    def clearMatrixBuffer(self):
+        """ Resets the matrix buffer to hold 64 lists of three zeros. """
+        self.matrix_buffer = [[0, 0, 0] * 64]
+
+    def render(self):
+        """ Renders the contents of the matrix buffer. """
+        self.sense_ref.sense_hat.set_pixels(self.matrix_buffer)
+
 
 class GhostRelativeSenseHAT:
     """ Stores data of the ghost relative to the sense HAT
@@ -144,6 +189,7 @@ class GhostRelativeSenseHAT:
         pxl_pos (list): The displacement of the ghost from the centre of the sense HAT matrix in the form [horizontal
         displacement, vertical displacement].
     """
+
     def __init__(self, ghost):
         self.ghost = ghost
         self.x_disp = 0
@@ -392,9 +438,6 @@ class ShutdownChecker:
         self.num_clicks = num_clicks
         self.debug = debug
 
-    def shutdown(self):
-        ...
-
     def update(self, new_stick_log: list):
         """ Checks new events from joystick for shutdown sequence; if the shutdown sequence was input, return True. """
         # Add new events to the shutdown recording list
@@ -415,7 +458,8 @@ class ShutdownChecker:
                         count += 1
                     # If the joystick has been pressed in the required direction the required number of times,
                     # followed by down, return True to signify shutdown.
-                    return count == self.num_clicks and checkJoystickEvent(self.stick_event_log[i], StickDir.DOWN)  # TODO test this still works
+                    return count == self.num_clicks and checkJoystickEvent(self.stick_event_log[i],
+                                                                           StickDir.DOWN)  # TODO test this still works
 
             # Clear list, so that this doesn't loop constantly
             self.stick_event_log.clear()
@@ -425,22 +469,18 @@ class ProximityBar:
     """ Shows how close the nearest ghost is via a line on the sense HAT matrix.
 
     Attributes:
+        game_manager (GameManager): The GameManager object storing this ProximityBar instance.
         colors (list): A list containing 8 lists of the form [R, G, B], that specifies the range of colors to use.
         max_distance (float): The maximum distance that ghosts can be detected from.
         bar_height (int): The height of the bar after the update method is called.
     """
 
-    def __init__(self, max_distance=150, colors=None):
-        self.colors: list
-
-        if colors is not None:
-            self.colors = colors
-        else:
-            self.colors = [RGB.RED, RGB.ORANGE, RGB.ORANGE, RGB.YELLOW,
-                           RGB.YELLOW, RGB.GREEN, RGB.GREEN, RGB.BLUE]
-
+    def __init__(self, game_manager: GameManager, max_distance=150):
+        self.game_manager = game_manager
         self.max_distance = max_distance
         self.bar_height = -1
+        self.colors = [RGB.RED, RGB.ORANGE, RGB.ORANGE, RGB.YELLOW,
+                       RGB.YELLOW, RGB.GREEN, RGB.GREEN, RGB.BLUE]
 
     def update(self, ghosts: [Ghost]):
         """ Performs calculations needed to update the proximity bar. """
@@ -474,8 +514,8 @@ class ProximityBar:
         Where y = proximity bar height from 0 to 7 inclusive, 
         x = distance from 150 to √2 of L (where L = LIMIT) inclusive, respectively.
         """
-        # TODO: Tweak RANGE use in equation? (to make bar only full when closer to ghost
-        bar_height = round((7 * (nearest_ghost.relative_sense.distance - self.max_distance)) / ((2 ** 0.5) * RANGE - self.max_distance))
+        bar_height = round((7 * (nearest_ghost.relative_sense.distance - self.max_distance)) / (
+                (2 ** 0.5) * RANGE - self.max_distance))
         # Limit bar height
         if bar_height > 7:
             bar_height = 7
@@ -483,22 +523,32 @@ class ProximityBar:
         self.bar_height = bar_height
         return self.bar_height
 
-    def render(self, sense_hat: SenseHat):
+    def renderToBuffer(self):
         """ Displays the proximity bar on the sense HAT. """
-        # If ghost within proximity range
-        if 0 <= self.bar_height <= 7:
+        # If the ghost is not within range, show nothing on bar.
+        # This is done by starting from the top left pixel and stepping eight pixels with square bracket notation.
+        if self.bar_height < 0:
+            self.game_manager.matrix_buffer[::8] = [RGB.BLANK.value] * 8
+
+        # Ghost is in range
+        else:
             # Determine color to use
             color = self.colors[7 - self.bar_height].value
-            # Render bar
-            for i in range(7, 7 - self.bar_height - 1, -1):
-                sense_hat.set_pixel(0, i, color)
+            # Show a number of blank pixels, and as many colored pixels as bar_height; the number of blank pixels will
+            # change depending on bar_height. Write the blank ones first, so that the bar goes upwards.
+            blank_pixels = [RGB.BLANK.value] * (7 - self.bar_height)
+            colored_pixels = [color] * self.bar_height
+            self.game_manager.matrix_buffer[::8] = blank_pixels + colored_pixels
 
-# TODO test
+
+# TODO test; also implement attacking ghosts
 class AttackSystem:
     """
 
     """
-    def __init__(self):
+
+    def __init__(self, game_manager: GameManager):
+        self.game_manager = game_manager
         self.attack_cooldown = 3
         self.time_last_attacked = time()
         self.attempting_attack = False
@@ -506,32 +556,60 @@ class AttackSystem:
 
         self.charge_colors = [RGB.BLANK, RGB.RED, RGB.YELLOW, RGB.GREEN]
 
-    def canAttack(self) -> bool:
+    def attackCooldownComplete(self) -> bool:
         """ Checks if attack cooldown is complete, returns True if it is. """
         can_attack = (time() - self.time_last_attacked) > self.attack_cooldown
         self.time_last_attacked = time()
         return can_attack
 
-    def renderHud(self, sense_hat: SenseHat):
-        # Get time since last attacked
+    def calcChargeBarHeight(self):
+        # Get time since last attacked; round to make it integer, using floor, because if normal round is used,
+        # the bar may be full when the cooldown isn't complete.
         charge_bar_height = floor(time() - self.time_last_attacked)
         # Limit to cooldown
         charge_bar_height = self.attack_cooldown if charge_bar_height >= self.attack_cooldown else charge_bar_height
 
-        # Build focus HUD (an orange square of varying brightness)
-        focus_effect = None
+        return charge_bar_height
+
+    def renderFocusEffectToBuffer(self):
+        """ Writes the focus effect (an orange square) to the game manager's matrix buffer. """
+
+        # If the HUD should be off, just return without doing anything to the matrix buffer.
+        if self.hud_state == HUDState.OFF:
+            return
+
+        bright_orange = [184, 73, 0]
+        dim_orange = [133, 53, 0]
+
+        # Determine color to use based on HUD state
         if self.hud_state == HUDState.DIM:
-            # Dim orange square
-            focus_effect = getFocusEffect(RGB.BLANK.value, [133, 53, 0])
-        elif self.hud_state == HUDState.BRIGHT:
-            # Bright orange square
-            focus_effect = getFocusEffect(RGB.BLANK.value, [184, 73, 0])
+            color = dim_orange
+        else:  # HUD state must be HUDState.BRIGHT
+            color = bright_orange
 
-        # Render focus effect
-        if focus_effect:
-            sense_hat.set_pixels(focus_effect)
+        # Fill in square of colored pixels
+        focus_pxl_at_top_left_corner = 9
+        focus_pxl_after_bottom_right_corner = 55
+        num_pixels_covered_by_focus = 36
+        self.game_manager.matrix_buffer[focus_pxl_at_top_left_corner:
+                                        focus_pxl_after_bottom_right_corner] = [color] * num_pixels_covered_by_focus
 
-        # Render charge bar
+        # Fill in square of blank pixels
+        first_pxl_inside_focus = 18
+        pxl_after_last_pxl_inside_focus = 46
+        num_pixels_inside_focus = 16
+        self.game_manager.matrix_buffer[first_pxl_inside_focus:
+                                        pxl_after_last_pxl_inside_focus] = [RGB.BLANK.value] * num_pixels_inside_focus
+
+    def renderChargeBarToBuffer(self):
+        """ Writes the charge bar to the game manager's matrix buffer. """
+        charge_bar_height = self.calcChargeBarHeight()
         charge_bar_color = self.charge_colors[charge_bar_height].value
-        for i in range(7, 7 - charge_bar_height, -1):
-            sense_hat.set_pixel(7, i, charge_bar_color)
+
+        # Write charge bar to matrix buffer
+        charge_bar_top_pxl = 47
+        # Take every eighth pixel after the top of the charge bar; balance the number of blank and colored pixels.
+        # Write the blank ones first, so that the bar goes upwards.
+        blank_pixels = [RGB.BLANK.value] * (self.attack_cooldown - charge_bar_height)
+        colored_pixels = [charge_bar_color] * charge_bar_height
+        self.game_manager.matrix_buffer[charge_bar_top_pxl::8] = blank_pixels + colored_pixels

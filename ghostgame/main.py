@@ -1,11 +1,10 @@
-import os
-
 from library.classes import Ghost, GameManager
 from library.constants import GameState
 
 gm = GameManager()
+
 # Initialise ghosts
-ghosts = [Ghost()]
+gm.ghosts = [Ghost()]
 
 # Game loop
 while True:
@@ -18,20 +17,19 @@ while True:
     # Continue playing game
     if gm.game_state == GameState.PLAY:
         # Make list of blank RGB values for rendering ghost images
-        matrix = [(0, 0, 0) * 64]
+
         # Update ghosts
         sense_orientation = gm.sense_ref.orientation_degrees
-        for ghost in ghosts:
+        for ghost in gm.ghosts:
             ghost.updateGhost(sense_orientation)
 
+        # todo process attacking
+
         # Update proximity bar
-        gm.proximity_bar.update(ghosts)
+        gm.proximity_bar.update(gm.ghosts)
 
         # Update LED matrix
-        # Note that the ghost is not shown in this version
-        gm.sense_ref.sense_hat.clear()
-        gm.attack_system.renderHud(gm.sense_ref.sense_hat)  # Render attack system HUD first because it overwrites entire display
-        gm.proximity_bar.render(gm.sense_ref.sense_hat)  # Proximity bar
+        gm.render()
 
     # Paused
     elif gm.game_state == GameState.PAUSED:
@@ -43,4 +41,5 @@ while True:
 
     # Shut down Pi if shutdown sequence input
     if gm.shutdown_checker.update(new_events):
-        os.system("sudo shutdown now")
+        print("shut down signal")
+        # os.system("sudo shutdown now")
